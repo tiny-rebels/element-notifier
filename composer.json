@@ -1,0 +1,41 @@
+{
+	"name": "element/notifier",
+	"description": "Element package for sending out messages - either as a text-message with gatewayAPI or as a Slack notification",
+	"keywords": ["Element core", "SMS", "Messages", "Slack", "Notifications"],
+	"type": "library",
+	"license": "MIT",
+	"authors": [
+		{
+			"name": "Stefan Korfitz",
+			"homepage": "https://www.korfitz.com",
+			"role": "Developer"
+		}
+	],
+	"support": {
+		"email": "stefan@korfitz.com"
+	},
+	"config": {
+		"platform": {
+			"php": "7.4"
+		},
+		"sort-packages": true
+	},
+	"suggest": {
+		"php8": "This package utilizes features that are found in 7.4 - But if you use php8 or higher, then you should have no problems"
+	},
+	"autoload": {
+		"psr-4": {
+			"Element\\Notifier\\": "src/"
+		}
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"Element\\Notifier\\Tests\\": "tests/"
+		}
+	},
+	"require": {
+		"ext-curl": "*",
+		"ext-json": "*",
+		"guzzlehttp/guzzle": "^7.9"
+	}
+}
