@@ -30,12 +30,15 @@
 	},
 	"autoload-dev": {
 		"psr-4": {
-			"Element\\Notifier\\Tests\\": "tests/"
+			"Element\\Notifier\\tests\\": "tests/"
 		}
 	},
 	"require": {
 		"ext-curl": "*",
 		"ext-json": "*",
 		"guzzlehttp/guzzle": "^7.9"
+	},
+	"require-dev": {
+		"phpunit/phpunit": "^9.6"
 	}
 }
