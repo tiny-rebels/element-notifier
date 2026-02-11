@@ -131,4 +131,62 @@ class GatewayAPI extends Service {
 
         return $decoded->ids ?? null;
     }
+
+    /**
+     * Deletes a scheduled (not-yet-performed) SMS from the GatewayAPI-queue.
+     *
+     * This method ONLY WORKS for texts, that are created with the 'sendtime'-parameter (scheduled).
+     * Docs: DELETE /rest/mtsms/{id}  →  204 No Content ved succes. [1](https://apitextmagic.voog.com/https-api/examples)
+     *
+     * @param int $id  ID from the GatewayAPI-response when you created the message.
+     * @return bool    true, if the deletion went well (HTTP 204).
+     *
+     * @throws CurlErrorException  by cURL-/transport error
+     * @throws HttpException       by HTTP-status ≠ 204
+     */
+    public function deleteScheduledMessage($id): bool {
+
+        if (!is_int($id) || $id <= 0) {
+
+            throw new \InvalidArgumentException("The 'id' must be a positive integer.");
+        }
+
+        $url       = rtrim($this->url, '/');   // fx https://gatewayapi.com/rest/mtsms
+        $api_token = $this->apiToken;
+
+        // Byg endpoint: {base}/{id}
+        $endpoint = $url . '/' . $id;
+
+        $ch = curl_init();
+
+        curl_setopt($ch, CURLOPT_URL, $endpoint);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ["Accept: application/json"]);
+        curl_setopt($ch, CURLOPT_USERPWD, $api_token . ":");
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        $result = curl_exec($ch);
+        $errno  = curl_errno($ch);
+        $errstr = $errno !== 0 ? curl_error($ch) : null;
+        $status = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+
+        curl_close($ch);
+
+        if ($errno !== 0) {
+
+            throw new CurlErrorException($errno, $errstr);
+        }
+
+        // Succes: 204 No Content
+        if ((int)$status === 204) {
+
+            return true;
+        }
+
+        // Error from the server: throws HttpException with status + body
+        $body = is_string($result) ? $result : null;
+
+        throw new HttpException($status, $body);
+    }
+
 }
