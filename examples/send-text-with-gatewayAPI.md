@@ -52,7 +52,10 @@ class SMS_DownNotification {
         // visit GatewayAPI docs for more information : 
         $message = "An endpoint is DOWN with status code of {$event->endpoint->status->status_code}";
 
-        Notifier::connect("gatewayAPI", $url, $token)->sendMessage([4511223344, 4555667788], $message, "kør'kort");
+        $send = Notifier::connect("gatewayAPI", $url, $token)->sendMessage([4511223344, 4555667788], $message, "kør'kort");
+        
+        $send->now();                       // <- notice the now() function at the end! This will send the message straight away...
+        $send->schedule(int $timestamp);    // <- notice the schedule() function at the end! This will send the message at the scheduled time...
     }
 }
 ```
