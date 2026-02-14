@@ -49,17 +49,19 @@ class GatewayAPI extends Service {
      *
      * Supports scheduling via $sendAt, that maps to "sendtime".
      *
-     * @param array     $recipients
-     * @param string    $message        Content of what message you want to send
-     * @param string    $sender         Either a name or a phonenumber
-     * @param string    $priority       BULK|NORMAL|URGENT|VERY_URGENT
-     * @param int|null  $sendAt         UNIX timestamp (seconds)
+     * @param array         $recipients
+     * @param string        $message        Content of what message you want to send
+     * @param string        $sender         Either a name or a phonenumber
+     * @param string        $priority       BULK|NORMAL|URGENT|VERY_URGENT
+     * @param int|null      $sendAt         UNIX timestamp (seconds)
+     * @param string|null   $callbackUrl    (REST: callback_url)
+     * @param string|null   $payload        (REST: payload – Base64, ekskluderer 'message' og 'tags')
      *
-     * @return mixed|null               message IDs from the provider response
+     * @return mixed|null                   message IDs from the provider response
      *
-     * @throws \RuntimeException        either by HTTP- or cURL-error
+     * @throws \RuntimeException            either by HTTP- or cURL-error
      */
-    public function dispatch(array $recipients, string $message, string $sender, string $priority, ?int $sendAt = null) {
+    public function dispatch(array $recipients, string $message, string $sender, string $priority, ?int $sendAt = null, $callbackUrl = null, $payload = null) {
 
         $url       = $this->url;
         $api_token = $this->apiToken;
@@ -99,6 +101,23 @@ class GatewayAPI extends Service {
             $json['sendtime'] = $sendAt;
         }
 
+        if (is_string($callbackUrl) && $callbackUrl !== '') {
+
+            $json['callback_url'] = $callbackUrl; // documented field for status webhooks [1](https://apitextmagic.voog.com/https-api/examples)
+        }
+
+        // MESSAGE vs PAYLOAD (mutually exclusive according to REST)
+        if ($payload !== null && $payload !== '') {
+
+            // Binary SMS → payload is Base64, and 'message' is therefor NOT ALLOWED. [1](https://apitextmagic.voog.com/https-api/examples)
+            $json['payload'] = $payload;
+
+        } else {
+
+            // Almindelig tekst SMS → brug 'message'
+            $json['message'] = $message;
+        }
+
         // cURL-call
         $ch = curl_init();
 
@@ -132,6 +151,115 @@ class GatewayAPI extends Service {
         return $decoded->ids ?? null;
     }
 
+
+    /**
+     * Fetch an SMS, and it's status from GatewayAPI via GET /rest/mtsms/{id}
+     * Docs: "Get SMS and SMS status" (HTTP 200 med JSON) [1](https://apitextmagic.voog.com/https-api/examples)
+     *
+     * @param int   $id     Message-ID from GatewayAPI (from 'ids' after send/schedule)
+     * @param bool  $assoc  true => returns an assoc array; false => stdClass
+     *
+     * @return array|object  The JSON-decoded respons (typically a list with ONE SMS)
+     *
+     * @throws \InvalidArgumentException
+     * @throws CurlErrorException
+     * @throws HttpException
+     */
+    public function getTextMessage(int $id, bool $assoc = true) {
+
+        if (!is_int($id) || $id <= 0) {
+
+            throw new \InvalidArgumentException("The 'id' must be a positive integer.");
+        }
+
+        $base     = rtrim($this->url, '/');   // fx https://gatewayapi.com/rest/mtsms
+        $endpoint = $base . '/' . $id;
+        $token    = $this->apiToken;
+
+        $ch = curl_init();
+
+        curl_setopt($ch, CURLOPT_URL, $endpoint);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ["Accept: application/json"]);
+        curl_setopt($ch, CURLOPT_USERPWD, $token . ":");
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        $result = curl_exec($ch);
+        $errno  = curl_errno($ch);
+        $errstr = $errno !== 0 ? curl_error($ch) : null;
+        $status = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+
+        curl_close($ch);
+
+        if ($errno !== 0) {
+
+            throw new CurlErrorException($errno, $errstr);
+        }
+
+        if ((int)$status !== 200) {
+
+            $body = is_string($result) ? $result : null;
+            throw new HttpException((int)$status, $body);
+        }
+
+        // Returns an assoc array (default) or stdClass
+        return json_decode($result, (bool)$assoc);
+    }
+
+    /**
+     * (Optionally helper) Fetch deliverystatus pr. recipient in a text.
+     * Parses the response from getSms(...) and extracts recipients[*].msisdn/dsnstatus/dsntime.
+     * The strukture follows GET /rest/mtsms/{id} found in docs. [1](https://apitextmagic.voog.com/https-api/examples)
+     *
+     * @param int $id
+     * @return array  Fx: [ ['msisdn' => '4512345678', 'dsnstatus' => 'DELIVERED', 'dsntime' => 1498040129.0], ... ]
+     */
+    public function getTextMessageStatuses(int $id): array {
+
+        $data = $this->getTextMessage($id, true); // assoc array
+
+        // Response is typically a list (array) with one message
+        if (!is_array($data)) {
+
+            return [];
+        }
+
+        // Find the first element, that looks like a recipient
+        $message = null;
+
+        if (isset($data[0]) && is_array($data[0])) {
+
+            $message = $data[0];
+
+        } elseif (!empty($data) && isset($data['recipients'])) {
+
+            $message = $data; // fallback IF the API one day returns an objekt
+        }
+
+        if (!$message || !isset($message['recipients']) || !is_array($message['recipients'])) {
+
+            return [];
+        }
+
+        $data = [];
+
+        foreach ($message['recipients'] as $recipient) {
+
+            $data[] = [
+
+                'dsnerror'      => isset($recipient['dsnerror'])        ? (string)$recipient['dsnerror']        : null,
+                'dsnerrorcode'  => isset($recipient['dsnerrorcode'])    ? (string)$recipient['dsnerrorcode']    : null,
+                'dsnstatus'     => isset($recipient['dsnstatus'])       ? (string)$recipient['dsnstatus']       : null,
+                'dsntime'       => isset($recipient['dsntime'])         ? $recipient['dsntime']                 : null,
+                'mcc'           => isset($recipient['mcc'])             ? (string)$recipient['mcc']             : null,
+                'mnc'           => isset($recipient['mnc'])             ? (string)$recipient['mnc']             : null,
+                'msisdn'        => isset($recipient['msisdn'])          ? (string)$recipient['msisdn']          : null,
+                'senttime'      => isset($recipient['senttime'])        ? $recipient['senttime']                : null,
+            ];
+        }
+
+        return $data;
+    }
+
     /**
      * Deletes a scheduled (not-yet-performed) SMS from the GatewayAPI-queue.
      *
@@ -154,7 +282,7 @@ class GatewayAPI extends Service {
         $url       = rtrim($this->url, '/');   // fx https://gatewayapi.com/rest/mtsms
         $api_token = $this->apiToken;
 
-        // Byg endpoint: {base}/{id}
+        // Build endpoint: {base}/{id}
         $endpoint = $url . '/' . $id;
 
         $ch = curl_init();

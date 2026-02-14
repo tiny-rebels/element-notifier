@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/9.5/phpunit.xsd"
+    bootstrap="tests/bootstrap.php"
+    colors="true"
+    verbose="true"
+    stopOnFailure="false"
+    failOnWarning="false"
+    failOnRisky="false"
+    executionOrder="default"
+    cacheResult="true">
+
+    <coverage processUncoveredFiles="true">
+        <include>
+            <directory suffix=".php">src</directory>
+        </include>
+        <exclude>
+            <directory>vendor</directory>
+            <directory>tests</directory>
+        </exclude>
+        <report>
+            <html outputDirectory="coverage-html" lowUpperBound="50" highLowerBound="90"/>
+        </report>
+    </coverage>
+
+    <testsuites>
+        <testsuite name="Notifier Test Suite">
+            <directory>./tests</directory>
+        </testsuite>
+    </testsuites>
+
+</phpunit>
